@@ -3,7 +3,28 @@ var scenePlay = new Phaser.Class({
   initialize: function ScenePlay() {
     Phaser.Scene.call(this, { key: "scenePlay" });
   },
-  init: function () {},
+
+  init: function () {
+    // Initialize game variables
+    this.timerHalangan = 0;
+    this.halangan = [];
+    this.background = [];
+    this.isGameRunning = false;
+    this.score = 0;
+    this.gameSpeed = 1;
+    this.difficultyTimer = 0;
+
+    // Character movement variables
+    this.isInputPressed = false;
+    this.characterVelocityY = 0;
+    this.upwardForce = -5; // Force yang menarik karakter ke atas
+    this.downwardForce = 4; // Force yang menarik karakter ke bawah saat input ditekan
+
+    // Get screen dimensions
+    this.screenWidth = this.cameras.main.width;
+    this.screenHeight = this.cameras.main.height;
+  },
+
   preload: function () {
     this.load.image("chara", "assets/images/chara.png");
     this.load.image("fg_loop_back", "assets/images/fg_loop_back.png");
@@ -17,266 +38,453 @@ var scenePlay = new Phaser.Class({
   },
 
   create: function () {
-    this.timerHalangan = 0;
-    this.halangan = [];
-    this.background = [];
-    this.isGameRunning = false;
-    this.score = 0;
-    //menambahkan sprite karakter pada game
-    this.chara = this.add.image(130, 768 / 2, "chara");
+    // Get current screen dimensions
+    this.screenWidth = this.cameras.main.width;
+    this.screenHeight = this.cameras.main.height;
+
+    // Camera fade in
+    this.cameras.main.fadeIn(300, 0, 0, 0);
+
+    // Create character
+    this.createCharacter();
+
+    // Create UI
+    this.createScorePanel();
+
+    // Create sounds
+    this.createSounds();
+
+    // Create scrolling background
+    this.createScrollingBackground();
+
+    // Setup input controls
+    this.setupControls();
+
+    // Start game entrance animation
+    this.startEntranceAnimation();
+  },
+
+  createCharacter() {
+    // Position character relative to screen size
+    const charX = this.screenWidth * 0.15;
+    const charY = this.screenHeight / 2;
+
+    this.chara = this.add.image(charX, charY, "chara");
     this.chara.setDepth(3);
-    //membuat scale karakter menjadi 0 (tidak terlihat)
-    this.chara.setScale(0);
-    this.charaTweens = this.charaTweens = this.tweens.add({
-      targets: this.chara,
-      ease: "Power1",
-      duration: 750,
-      y: this.chara.y + 200,
-    });
-    //membuat panel nilai
-    this.panel_score = this.add.image(1024 / 2, 60, "panel_skor");
+    this.chara.setScale(0); // Start invisible
+
+    // Scale character appropriately for screen size
+    const characterScale = Math.min(
+      this.screenWidth / 1024,
+      this.screenHeight / 768
+    );
+    this.targetCharacterScale = characterScale;
+  },
+
+  createScorePanel() {
+    // Create score panel with responsive positioning
+    this.panel_score = this.add.image(
+      this.screenWidth / 2,
+      this.screenHeight * 0.08,
+      "panel_skor"
+    );
     this.panel_score.setOrigin(0.5);
     this.panel_score.setDepth(10);
     this.panel_score.setAlpha(0.8);
 
-    //membuat label nilai pada panel dengan nilai yang
-    //diambil dari variabel this.score
+    // Scale panel for screen size
+    const panelScale = Math.min(this.screenWidth / 1024, 1);
+    this.panel_score.setScale(panelScale);
+
+    // Create score label with responsive font size
+    const fontSize = Math.min(this.screenWidth / 34, 30);
     this.label_score = this.add.text(
-      this.panel_score.x + 25,
+      this.panel_score.x + 25 * panelScale,
       this.panel_score.y,
-      this.score
+      this.score,
+      {
+        fontSize: fontSize + "px",
+        fill: "#ff732e",
+        fontFamily: "Arial, sans-serif",
+        fontWeight: "bold",
+      }
     );
     this.label_score.setOrigin(0.5);
     this.label_score.setDepth(10);
-    this.label_score.setFontSize(30);
-    this.label_score.setTint(0xff732e);
-    //=========== CUSTOM FUNCTION ===========
-    this.gameOver = function () {
-      //inisialisasi variabel global highscore dengan nilai awal 0
-      //jika belum ada nilai yang pernah tersimpan, namun jika sudah
-      //pernah ada nilai yang tersimpan, akan mengambil dari nilai
-      //terakhir yang tersimpan
-      let highScore = localStorage["highscore"] || 0;
-      //jika nilai lebih besar dari nilai tertinggi
-      if (myScene.score > highScore) {
-        localStorage["highscore"] = myScene.score;
-      }
-      //berpindah menuju scene menu,
-      //pastikan nama scene sesuai
-      myScene.scene.start("sceneMenu");
-    };
+  },
 
-    //=========== DETEKSI USER INPUT ===========
+  createSounds() {
+    // Create sounds with error handling
+    try {
+      this.snd_dead = this.sound.add("snd_dead");
+      this.snd_click = [
+        this.sound.add("snd_klik_1"),
+        this.sound.add("snd_klik_2"),
+        this.sound.add("snd_klik_3"),
+      ];
 
-    //menambahkan deteksi ketika pointer dilepaskan untuk menurunkan
-    //karakter ketika user melepaskan klik pada canvas game
-    this.input.on(
-      "pointerup",
-      function (pointer, currentlyOver) {
-        //jika this.isGameRunning bernilai false, maka kode di bawahnya
-        //tidak akan dijalankan
-        if (!this.isGameRunning) return;
-
-        //acak sound dalam array (0-2)
-        this.snd_click[Math.floor(Math.random() * 3)].play();
-        this.charaTweens = this.tweens.add({
-          targets: this.chara,
-          ease: "Power1",
-          duration: 750,
-          y: this.chara.y + 200,
-        });
-      },
-      this
-    );
-    var myScene = this;
-    //animasi scale karakter menjadi 1 (terlihat di tampilan)
-    this.tweens.add({
-      delay: 250,
-      targets: this.chara,
-      ease: "Back.Out",
-      duration: 500,
-      scaleX: 1,
-      scaleY: 1,
-      onComplete: function () {
-        myScene.isGameRunning = true;
-      },
-    });
-
-    //membuat variabel sound ketika karakter bertabrakan dengan halangan
-    this.snd_dead = this.sound.add("snd_dead");
-    //membuat variabel sound, dimasukkan ke dalam array
-    //karena akan dimainkan acak salah satu ketika karakter diklik
-    this.snd_click = [];
-    this.snd_click.push(this.sound.add("snd_klik_1"));
-    this.snd_click.push(this.sound.add("snd_klik_2"));
-    this.snd_click.push(this.sound.add("snd_klik_3"));
-    //mengatur volume klik 50%
-    for (let i = 0; i < this.snd_click.length; i++) {
-      this.snd_click[i].setVolume(0.5);
-    }
-
-    //variabel pengganti angka
-    var bg_x = 1366 / 2;
-
-    //perulangan sebanyak 2x
-    for (let i = 0; i < 2; i++) {
-      //array background baru
-      var bg_awal = [];
-      //membuat background dan foreground
-      var BG = this.add.image(bg_x, 768 / 2, "fg_loop_back");
-      var FG = this.add.image(bg_x, 768 / 2, "fg_loop");
-      //menambahkan custom data
-      BG.setData("kecepatan", 2);
-      FG.setData("kecepatan", 4);
-      FG.setDepth(2);
-      //memasukkan background dan foreground ke dalam array baru
-      bg_awal.push(BG);
-      bg_awal.push(FG);
-      //memasukkan array background
-      this.background.push(bg_awal);
-      //menambah nilai bg_x untuk perulangan selanjutnya
-      bg_x += 1366;
+      // Set volume for click sounds
+      this.snd_click.forEach((sound) => {
+        sound.setVolume(0.5);
+      });
+    } catch (error) {
+      console.warn("Could not load game sounds:", error);
+      this.snd_dead = null;
+      this.snd_click = [];
     }
   },
 
+  createScrollingBackground() {
+    // Create responsive background width
+    const bgWidth = Math.max(this.screenWidth, 1366);
+    let bg_x = bgWidth / 2;
+
+    // Create multiple background layers for seamless scrolling
+    for (let i = 0; i < 3; i++) {
+      const bg_awal = [];
+
+      // Background layer
+      const BG = this.add.image(bg_x, this.screenHeight / 2, "fg_loop_back");
+      BG.setData("kecepatan", 2);
+      BG.setDepth(0);
+
+      // Foreground layer
+      const FG = this.add.image(bg_x, this.screenHeight / 2, "fg_loop");
+      FG.setData("kecepatan", 4);
+      FG.setDepth(2);
+
+      // Scale backgrounds to fit screen
+      const bgScale = Math.max(
+        this.screenWidth / 1366,
+        this.screenHeight / 768
+      );
+      BG.setScale(bgScale);
+      FG.setScale(bgScale);
+
+      bg_awal.push(BG);
+      bg_awal.push(FG);
+      this.background.push(bg_awal);
+
+      bg_x += bgWidth;
+    }
+  },
+
+  setupControls() {
+    const self = this;
+
+    // Touch/click controls - untuk mendeteksi saat tombol ditekan
+    this.input.on(
+      "pointerdown",
+      function (pointer) {
+        self.handleInputStart();
+      },
+      this
+    );
+
+    // Touch/click controls - untuk mendeteksi saat tombol dilepas
+    this.input.on(
+      "pointerup",
+      function (pointer) {
+        self.handleInputEnd();
+      },
+      this
+    );
+
+    // Keyboard controls
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.spacebar = this.input.keyboard.addKey(
+      Phaser.Input.Keyboard.KeyCodes.SPACE
+    );
+  },
+
+  handleInputStart() {
+    if (!this.isGameRunning) return;
+
+    this.isInputPressed = true;
+
+    // Play random click sound only once when starting to press
+    if (this.snd_click.length > 0) {
+      const randomSound =
+        this.snd_click[Math.floor(Math.random() * this.snd_click.length)];
+      randomSound.play();
+    }
+  },
+
+  handleInputEnd() {
+    if (!this.isGameRunning) return;
+
+    this.isInputPressed = false;
+  },
+
+  startEntranceAnimation() {
+    const self = this;
+
+    // Character entrance animation
+    this.tweens.add({
+      delay: 250,
+      targets: this.chara,
+      ease: "Back.easeOut",
+      duration: 500,
+      scaleX: this.targetCharacterScale,
+      scaleY: this.targetCharacterScale,
+      onComplete: function () {
+        self.isGameRunning = true;
+      },
+    });
+  },
+
   update: function () {
-    //sama saja dengan if (this.isGameRunning == true)
-    if (this.isGameRunning) {
-      //karakter
-      //sifat karakter, naik 5 pixel setiap frame
-      //sama dengan this.chara.y = this.chara.y - 5
-      this.chara.y -= 5;
+    // Handle screen resize
+    this.handleResize();
 
-      //batas karakter agar karakter tidak bisa jauh ke bawah
-      if (this.chara.y > 690) this.chara.y = 690;
+    if (!this.isGameRunning) return;
 
-      //mengakses array
-      for (let i = 0; i < this.background.length; i++) {
-        //mengakses array di dalam array
-        for (var j = 0; j < this.background[i].length; j++) {
-          //mengambil data kecepatan, lalu mengurangi nilai x
-          //sebanyak kecepatan tersebut
-          this.background[i][j].x -= this.background[i][j].getData("kecepatan");
-          //atur ulang posisi jika posisi sudah berada di kiri canvas
-          //karena titik posisi adalah tengah dan ukuran background adalah 1366
-          //maka background akan tidak terlihat ketika mencapai posisi minus 1366/2
-          if (this.background[i][j].x <= -(1366 / 2)) {
-            //digunakan untuk pengaturan ulang posisi agar tidak ada jarak antar background
-            //misal, posisi x background adalah -685, selisih 2 pixel dengan -(1366/2) = -682
-            //selisih tersebut akan ditambahkan untuk pengaturan ulang posisi
-            var diff = this.background[i][j].x + 1366 / 2;
-            //mengatur ulang posisi menjadi di sebelah kanan canvas + selisih akhir
-            //sebelum atur ulang posisi
-            this.background[i][j].x = 1366 + 1366 / 2 + diff;
-          }
-        }
-      }
+    // Handle keyboard input
+    this.handleKeyboardInput();
 
-      //jika this.timerHalangan adalah 0, maka buat peluru baru
-      if (this.timerHalangan == 0) {
-        //mendapatkan angka acak antara 60 hingga 680
-        var acak_y = Math.floor(Math.random() * 621 + 60);
-        //membuat peluru baru dengan posisi x 1500 (kanan),
-        //dan posisi y acak antara 60 - 680
-        var halanganBaru = this.add.image(1500, acak_y, "obstc");
-        //mengubah titik posisi (anchor point) berada di kiri, bukan di tengah
-        halanganBaru.setOrigin(0, 0);
-        halanganBaru.setData("status_aktif", true);
-        halanganBaru.setData("kecepatan", Math.floor(Math.random() * 15 + 10));
-        halanganBaru.setDepth(5);
-        //memasukkan peluru ke dalam array agar dapat diakses kembali
-        this.halangan.push(halanganBaru);
-        //mengatur ulang waktu untuk memunculkan halangan selanjutnya
-        //acak antara 10 sampai 50 frame
-        this.timerHalangan = Math.floor(Math.random() * 50 + 10);
-      }
+    // Update character physics
+    this.updateCharacter();
 
-      //mengakses array halangan
-      for (let i = this.halangan.length - 1; i >= 0; i--) {
-        //menggerakkan halangan sebanyak kecepatan perframe
-        this.halangan[i].x -= this.halangan[i].getData("kecepatan");
-        //jika halangan sudah di posisi kurang dari -200 (sudah tidak terlihat)
-        if (this.halangan[i].x < -200) {
-          //hancurkan halangan untuk mengurangi beban memori
-          this.halangan[i].destroy();
-          //hapus dari array halangan yang sudah dihancurkan
-          this.halangan.splice(i, 1);
-          break;
-        }
-      }
-      this.timerHalangan--;
+    // Update background scrolling
+    this.updateBackground();
 
-      for (var i = this.halangan.length - 1; i >= 0; i--) {
-        //jika posisi halangan +50 lebih kecil dari karakter dan status halangan masih aktif
-        if (
-          this.chara.x > this.halangan[i].x + 50 &&
-          this.halangan[i].getData("status_aktif") == true
-        ) {
-          //ubah status halangan menjadi tidak aktif
-          this.halangan[i].setData("status_aktif", false);
-          //tambahkan nilai sebanyak 1 poin
-          this.score++;
-          //ubah label menjadi nilai terbaru
-          this.label_score.setText(this.score);
-        }
-      }
+    // Update obstacles
+    this.updateObstacles();
 
-      for (let i = this.halangan.length - 1; i >= 0; i--) {
-        //jika rect chara mengenai titik posisi halangan
-        if (
-          this.chara
-            .getBounds()
-            .contains(this.halangan[i].x, this.halangan[i].y)
-        ) {
-          //ubah status halangan menjadi tidak aktif
-          this.halangan[i].setData("status_aktif", false);
-          //ubah status game
-          this.isGameRunning = false;
-          //memainkan suara karakter kalah
-          this.snd_dead.play();
-          //melakukan cek variabel penampung animasi karakter
-          //sebelum menghentikan animasi karakter
-          if (this.charaTweens != null) {
-            this.charaTweens.stop();
-          }
-          //membuat objek pengganti this, karena this tidak dapat diakses
-          //pada onComplete secara langsung
-          var myScene = this;
-          //membuat animasi kalah
-          this.charaTweens = this.tweens.add({
-            targets: this.chara,
-            ease: "Elastic.easeOut",
-            duration: 2000,
-            alpha: 0,
-            //memanggil fungsi gameOver() setelah animasi selesai
-            onComplete: myScene.gameOver,
-          });
-          //menghentikan looping jika sudah terpenuhi pengecekannya
-          break;
-        }
-        if (this.chara.y < -50) {
-          //ubah status game
-          this.isGameRunning = false;
-          //memainkan suara karakter kalah
-          this.sbnd_dead.play();
-          //melakukan cek variabel penampung animasi karakter
-          //sebelum menghentikan animasi karakter
-          if (this.charaTweens != null) {
-            this.charaTweens.stop();
-          }
-          //membuat objek pengganti this
-          let myScene = this;
-          //membuat animasi kalah
-          this.charaTweens = this.tweens.add({
-            targets: this.chara,
-            ease: "Elastic.easeOut",
-            duration: 2000,
-            alpha: 0,
-            //memanggil fungsi gameOver setelah animasi selesai
-            onComplete: myScene.gameOver,
-          });
+    // Update difficulty
+    this.updateDifficulty();
+
+    // Check collisions
+    this.checkCollisions();
+  },
+
+  handleResize() {
+    const newWidth = this.cameras.main.width;
+    const newHeight = this.cameras.main.height;
+
+    if (newWidth !== this.screenWidth || newHeight !== this.screenHeight) {
+      this.screenWidth = newWidth;
+      this.screenHeight = newHeight;
+      this.repositionElements();
+    }
+  },
+
+  repositionElements() {
+    // Reposition UI elements for new screen size
+    if (this.panel_score) {
+      this.panel_score.setPosition(
+        this.screenWidth / 2,
+        this.screenHeight * 0.08
+      );
+      const panelScale = Math.min(this.screenWidth / 1024, 1);
+      this.panel_score.setScale(panelScale);
+    }
+
+    if (this.label_score) {
+      this.label_score.setPosition(
+        this.panel_score.x + 25 * this.panel_score.scaleX,
+        this.panel_score.y
+      );
+    }
+  },
+
+  updateCharacter() {
+    // Logika pergerakan karakter berdasarkan input
+    if (this.isInputPressed) {
+      // Saat tombol ditekan, karakter turun
+      this.characterVelocityY = this.downwardForce * this.gameSpeed;
+    } else {
+      // Saat tombol tidak ditekan, karakter naik
+      this.characterVelocityY = this.upwardForce * this.gameSpeed;
+    }
+
+    // Terapkan velocity ke posisi karakter
+    this.chara.y += this.characterVelocityY;
+
+    // Boundary checks
+    const minY = this.screenHeight * 0.05; // Batas atas
+    const maxY = this.screenHeight * 0.95; // Batas bawah
+
+    if (this.chara.y > maxY) {
+      this.chara.y = maxY;
+      this.gameOver("hit_ground");
+    }
+
+    if (this.chara.y < minY) {
+      this.chara.y = minY;
+      this.gameOver("hit_ceiling");
+    }
+  },
+
+  updateBackground() {
+    const bgWidth = Math.max(this.screenWidth, 1366);
+
+    for (let i = 0; i < this.background.length; i++) {
+      for (let j = 0; j < this.background[i].length; j++) {
+        const bgElement = this.background[i][j];
+        const speed = bgElement.getData("kecepatan") * this.gameSpeed;
+        bgElement.x -= speed;
+
+        // Reset position when off screen
+        if (bgElement.x <= -(bgWidth / 2)) {
+          const diff = bgElement.x + bgWidth / 2;
+          bgElement.x = bgWidth * 2 + bgWidth / 2 + diff;
         }
       }
     }
+  },
+
+  updateObstacles() {
+    // Spawn new obstacles
+    if (this.timerHalangan <= 0) {
+      this.spawnObstacle();
+      this.timerHalangan = Math.floor(Math.random() * 40 + 20) / this.gameSpeed;
+    }
+    this.timerHalangan--;
+
+    // Update existing obstacles
+    for (let i = this.halangan.length - 1; i >= 0; i--) {
+      const obstacle = this.halangan[i];
+      const speed = obstacle.getData("kecepatan") * this.gameSpeed;
+      obstacle.x -= speed;
+
+      // Remove off-screen obstacles
+      if (obstacle.x < -200) {
+        obstacle.destroy();
+        this.halangan.splice(i, 1);
+        continue;
+      }
+
+      // Score when passing obstacle
+      if (this.chara.x > obstacle.x + 50 && obstacle.getData("status_aktif")) {
+        obstacle.setData("status_aktif", false);
+        this.score++;
+        this.label_score.setText(this.score);
+      }
+    }
+  },
+
+  spawnObstacle() {
+    // Calculate spawn position relative to screen
+    const spawnX = this.screenWidth + 100;
+    const minY = this.screenHeight * 0.1;
+    const maxY = this.screenHeight * 0.8;
+    const randomY = Math.floor(Math.random() * (maxY - minY) + minY);
+
+    // Create obstacle
+    const obstacle = this.add.image(spawnX, randomY, "obstc");
+    obstacle.setOrigin(0, 0);
+    obstacle.setData("status_aktif", true);
+    obstacle.setData("kecepatan", Math.floor(Math.random() * 10 + 8));
+    obstacle.setDepth(5);
+
+    // Scale obstacle for screen size
+    const obstacleScale = Math.min(
+      this.screenWidth / 1024,
+      this.screenHeight / 768
+    );
+    obstacle.setScale(obstacleScale);
+
+    this.halangan.push(obstacle);
+  },
+
+  updateDifficulty() {
+    this.difficultyTimer++;
+
+    // Increase game speed every 10 seconds (600 frames at 60fps)
+    if (this.difficultyTimer >= 600) {
+      this.gameSpeed = Math.min(this.gameSpeed + 0.1, 3);
+      this.difficultyTimer = 0;
+    }
+  },
+
+  checkCollisions() {
+    const charBounds = this.chara.getBounds();
+
+    for (let i = this.halangan.length - 1; i >= 0; i--) {
+      const obstacle = this.halangan[i];
+      const obstBounds = obstacle.getBounds();
+
+      // Check collision with more precise bounds
+      if (Phaser.Geom.Rectangle.Overlaps(charBounds, obstBounds)) {
+        obstacle.setData("status_aktif", false);
+        this.gameOver("collision");
+        break;
+      }
+    }
+  },
+
+  handleKeyboardInput() {
+    // Handle keyboard input dengan logika yang sama
+    const spacePressed = this.spacebar.isDown;
+    const upPressed = this.cursors.up.isDown;
+    const downPressed = this.cursors.down.isDown;
+
+    // Untuk kontrol keyboard, kita gunakan tombol bawah untuk turun
+    // dan otomatis naik saat tidak ada tombol yang ditekan
+    if (downPressed || spacePressed) {
+      if (!this.isInputPressed) {
+        this.handleInputStart();
+      }
+    } else {
+      if (this.isInputPressed) {
+        this.handleInputEnd();
+      }
+    }
+  },
+
+  gameOver(reason) {
+    this.isGameRunning = false;
+    this.isInputPressed = false; // Reset input state
+
+    // Play death sound
+    if (this.snd_dead) {
+      this.snd_dead.play();
+    }
+
+    // Stop character animation
+    if (this.charaTweens) {
+      this.charaTweens.stop();
+    }
+
+    // Save high score
+    this.saveHighScore();
+
+    // Game over animation
+    const self = this;
+    this.charaTweens = this.tweens.add({
+      targets: this.chara,
+      ease: "Elastic.easeOut",
+      duration: 2000,
+      alpha: 0,
+      angle: reason === "collision" ? 360 : 0,
+      scaleX: 0.5,
+      scaleY: 0.5,
+      onComplete: function () {
+        self.returnToMenu();
+      },
+    });
+  },
+
+  saveHighScore() {
+    try {
+      const currentHighScore = parseInt(
+        localStorage.getItem("highscore") || "0"
+      );
+      if (this.score > currentHighScore) {
+        localStorage.setItem("highscore", this.score.toString());
+      }
+    } catch (error) {
+      console.warn("Could not save high score:", error);
+    }
+  },
+
+  returnToMenu() {
+    // Fade out and return to menu
+    this.cameras.main.fadeOut(500, 0, 0, 0);
+
+    this.cameras.main.once("camerafadeoutcomplete", () => {
+      this.scene.start("sceneMenu");
+    });
   },
 });
